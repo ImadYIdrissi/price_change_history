@@ -11,8 +11,4 @@
         }
     },
     "editor.formatOnSave": false,
-    // "python.formatting.blackArgs": [
-    //     "--line-length",
-    //     "80"
-    // ]
 }
