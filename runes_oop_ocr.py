@@ -1,7 +1,14 @@
 import cv2
 import numpy as np
 import pytesseract
+
+from io import BytesIO
+from pathlib import Path
+
+# from PIL import Image as PILImage
 from typing import Tuple, List, Dict, Any
+from openpyxl import Workbook, load_workbook
+from openpyxl.drawing.image import Image as OpenpyxlImage
 
 # Define color constants for drawing on images
 BLUE: Tuple[int, int, int] = (255, 0, 0)
@@ -69,8 +76,10 @@ class TextElement:
             original_img: The original image to perform OCR on.
 
         Returns:
-            A dictionary with keys 'cropped_img' and 'text', containing the
-            preprocessed image and the OCR-extracted text, respectively.
+            A dictionary with keys 'original_cropped_img',
+            'preprocessed_cropped_img' and 'text', containing the
+            original image, the preprocessed image and the OCR-extracted text,
+            respectively.
         """
         cropped_img = original_img[
             self.y : self.y + self.h, self.x : self.x + self.w
@@ -81,7 +90,11 @@ class TextElement:
         text = pytesseract.image_to_string(
             image=preprocessed_img, config="--psm 7 --oem 3"
         ).strip()
-        return {"cropped_img": preprocessed_img, "text": text}
+        return {
+            "original_cropped_img": cropped_img,
+            "preprocessed_cropped_img": preprocessed_img,
+            "text": text,
+        }
 
 
 class Line(TextElement):
@@ -280,6 +293,66 @@ def display_img(mat: np.ndarray, tag: str = "") -> None:
     cv2.destroyAllWindows()
 
 
+def add_image_to_excel_from_memory(
+    image: np.ndarray, sheet, row: int, col: str
+):
+    is_success, buffer = cv2.imencode(".png", image)
+    if is_success:
+        # Directly use the buffer for creating an OpenpyxlImage
+        image_stream = BytesIO(buffer)
+        openpyxl_image = OpenpyxlImage(image_stream)
+        cell = f"{col}{row}"
+        sheet.add_image(openpyxl_image, cell)
+
+
+def add_results_to_excel(
+    file_path: str,
+    sheet_name: str,
+    ocred_tuples: Tuple[np.ndarray, np.ndarray, str],
+):
+    file_path = Path(file_path)
+
+    # Determine if the workbook needs to be created or loaded
+    if file_path.exists():
+        wb = load_workbook(filename=file_path)
+        ws = (
+            wb.get_sheet_by_name(sheet_name)
+            if sheet_name in wb.sheetnames
+            else None
+        )
+    else:
+        wb = Workbook()
+        ws = None
+
+    # Create a new sheet if it doesn't exist or if the workbook is new
+    if ws is None:
+        ws = wb.create_sheet(sheet_name)
+        # Add headers for a newly created sheet or workbook
+        headers = ["Original Image", "Preprocessed Image", "Converted Text"]
+        ws.append(headers)
+    elif ws.max_row == 1 and all(cell.value is None for cell in ws[1]):
+        # Add headers if the existing sheet is essentially empty
+        headers = ["Original Image", "Preprocessed Image", "Converted Text"]
+        ws.append(headers)
+
+    org_img, prep_img, text = ocred_tuples
+    # Append the text in the next available row
+    ws.append(["", "", text])
+
+    current_row = ws.max_row  # The row of the newly added text
+
+    # Embed the original and preprocessed images in their respective cells
+    add_image_to_excel_from_memory(
+        image=org_img, sheet=ws, row=current_row, col="A"
+    )
+    add_image_to_excel_from_memory(
+        image=prep_img, sheet=ws, row=current_row, col="B"
+    )
+
+    # Save the workbook
+    wb.save(filename=file_path)
+
+
 if __name__ == "__main__":
     image_path = (
         "/home/iyid/workspaces/price_change_history/"
@@ -294,8 +367,14 @@ if __name__ == "__main__":
             if i != 1:  # Skip this phrase
                 selected_phrases.append(phrase)
                 for word in phrase.words:
-                    word_img, word_txt = word.ocr_text(
+                    orig_word_img, prepr_word_img, word_txt = word.ocr_text(
                         original_img=original_img
                     ).values()
-                    print(word_txt)
-                    display_img(mat=word_img)
+
+                    # print(word_txt)
+                    # display_img(mat=prepr_word_img)
+                    add_results_to_excel(
+                        file_path="sample.xlsx",
+                        sheet_name="test1",
+                        ocred_tuples=(orig_word_img, prepr_word_img, word_txt),
+                    )
