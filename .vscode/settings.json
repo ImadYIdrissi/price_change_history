@@ -3,6 +3,9 @@
         80,
         119
     ],
+    "editor.formatOnSave": false,
+    "editor.wordWrap": "on",
+    "editor.wordWrapColumn": 79,
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.formatOnSave": true,
@@ -10,5 +13,4 @@
             "source.organizeImports": "explicit"
         }
     },
-    "editor.formatOnSave": false,
 }
