@@ -1,0 +1,5 @@
+openpyxl
+pytesseract
+numpy
+pandas
+# open-cv
