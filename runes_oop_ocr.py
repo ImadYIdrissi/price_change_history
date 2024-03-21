@@ -1,12 +1,15 @@
 import cv2
+import os
 import numpy as np
 import pytesseract
 
 from io import BytesIO
 from pathlib import Path
 
+
 # from PIL import Image as PILImage
 from typing import Tuple, List, Dict, Any
+from openpyxl.utils import get_column_letter
 from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
@@ -33,40 +36,64 @@ class TextElement:
         self.x += offset[0]
         self.y += offset[1]
 
-    def _preprocess_image(self, img: np.ndarray) -> np.ndarray:
+    def _preprocess_image(
+        self, img: np.ndarray, display_steps: bool = False
+    ) -> np.ndarray:
         """
         Preprocess the image for OCR by converting it to grayscale, applying
-        Gaussian blur, adaptive thresholding, and a morphological close
-        operation.
+        global thresholding, morphological operations, and edge enhancement.
 
         Args:
             img: The image to preprocess.
+            display_steps: Whether to display each preprocessing step.
 
         Returns:
             The preprocessed image.
         """
         # Convert to grayscale
         gray = cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY)
-        # Apply Gaussian blur to remove noise
-        blurred = cv2.GaussianBlur(src=gray, ksize=(5, 5), sigmaX=0)
-        # Use adaptive thresholding
-        adaptive_thresh = cv2.adaptiveThreshold(
-            src=blurred,
-            maxValue=255,
-            adaptiveMethod=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            thresholdType=cv2.THRESH_BINARY,
-            blockSize=11,
-            C=2,
-        )
-        # Apply a morphological operation
-        # - dilation followed by erosion, known as closing
-        # - This can help close small holes or gaps within text characters
 
-        kernel = cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(2, 2))
-        morph = cv2.morphologyEx(
-            src=adaptive_thresh, op=cv2.MORPH_CLOSE, kernel=kernel
+        # Enhance edges by using a kernel for sharpening
+        sharpen_kernel = np.array(
+            [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], np.float32
         )
-        return morph
+        sharpened = cv2.filter2D(src=gray, ddepth=-1, kernel=sharpen_kernel)
+
+        if display_steps:
+            cv2.imshow("Sharpened", sharpened)
+            cv2.waitKey(0)
+
+        # Apply global thresholding to binarize the image
+        _, binarized = cv2.threshold(
+            src=sharpened,
+            thresh=0,
+            maxval=255,
+            type=cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+        )
+
+        if display_steps:
+            cv2.imshow("Binarized", binarized)
+            cv2.waitKey(0)
+
+        # Create a structural element for morphological operations
+        morph_kernel = cv2.getStructuringElement(
+            shape=cv2.MORPH_RECT, ksize=(2, 2)
+        )
+
+        # Apply morphological opening (erosion followed by dilation) to remove noise
+        opened = cv2.morphologyEx(
+            src=binarized, op=cv2.MORPH_OPEN, kernel=morph_kernel
+        )
+
+        if display_steps:
+            cv2.imshow("Opened", opened)
+            cv2.waitKey(0)
+
+        # Invert image if text is white on black background
+        if np.mean(opened) > 127:  # more white than black
+            opened = cv2.bitwise_not(opened)
+
+        return opened
 
     def ocr_text(self, original_img: np.ndarray) -> Dict[str, Any]:
         """
@@ -96,43 +123,43 @@ class TextElement:
             "text": text,
         }
 
-    def draw(
-        self,
-        img: np.ndarray,
-        display: bool = False,
-        color: Tuple[int, int, int] = RED,
-        window_name: str = "Text Element",
-    ) -> np.ndarray:
-        """
-        Draw a bounding box around the text element on the image, optionally
-        display it, and allow color customization.
+        def draw(
+            self,
+            img: np.ndarray,
+            display: bool = False,
+            color: Tuple[int, int, int] = RED,
+            window_name: str = "Text Element",
+        ) -> np.ndarray:
+            """
+            Draw a bounding box around the text element on the image, optionally
+            display it, and allow color customization.
 
-        Args:
-            img: The original image on which to draw.
-            display: Flag indicating whether to display the image with the
-            bounding box.
-            color: The color of the bounding box (B, G, R).
+            Args:
+                img: The original image on which to draw.
+                display: Flag indicating whether to display the image with the
+                bounding box.
+                color: The color of the bounding box (B, G, R).
 
-        Returns:
-            The image with the bounding box drawn around the text element.
-        """
-        # Draw a rectangle around the text element with the specified color
-        cv2.rectangle(
-            img=img,
-            pt1=(self.x, self.y),
-            pt2=(self.x + self.w, self.y + self.h),
-            color=color,
-            thickness=2,
-        )
+            Returns:
+                The image with the bounding box drawn around the text element.
+            """
+            # Draw a rectangle around the text element with the specified color
+            cv2.rectangle(
+                img=img,
+                pt1=(self.x, self.y),
+                pt2=(self.x + self.w, self.y + self.h),
+                color=color,
+                thickness=2,
+            )
 
-        if display:
-            cv2.imshow(winname=window_name, mat=img)
-            cv2.waitKey(
-                delay=0
-            )  # Wait for a key press to close the displayed window
-            cv2.destroyAllWindows()
+            if display:
+                cv2.imshow(winname=window_name, mat=img)
+                cv2.waitKey(
+                    delay=0
+                )  # Wait for a key press to close the displayed window
+                cv2.destroyAllWindows()
 
-        return img
+            return img
 
 
 class Line(TextElement):
@@ -343,49 +370,88 @@ def add_image_to_excel_from_memory(
         sheet.add_image(openpyxl_image, cell)
 
 
+# After all the images and text have been inserted into the worksheet
+def adjust_column_widths(worksheet, min_width=10):
+    for col in worksheet.columns:
+        max_length = 0
+        column = col[0].column  # Get the column name
+        for cell in col:
+            try:  # Necessary to avoid error on empty cells
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except TypeError:
+                pass
+        adjusted_width = (max_length + 2) * 1.2
+        worksheet.column_dimensions[get_column_letter(column)].width = max(
+            min_width, adjusted_width
+        )
+
+
 def add_results_to_excel(
     file_path: str,
     sheet_name: str,
-    ocred_tuples: Tuple[np.ndarray, np.ndarray, str],
+    ocred_tuples: List[Tuple[np.ndarray, np.ndarray, str]],
+    delete_file_if_exists: bool = False,
 ):
     file_path = Path(file_path)
 
-    # Determine if the workbook needs to be created or loaded
-    if file_path.exists():
-        wb = load_workbook(filename=file_path)
-        ws = (
-            wb.get_sheet_by_name(sheet_name)
-            if sheet_name in wb.sheetnames
-            else None
-        )
-    else:
+    # Delete the file if it exists and deletion is requested
+    if file_path.exists() and delete_file_if_exists:
+        os.remove(file_path)
+
+    # Load or create the workbook
+    if not file_path.exists():
         wb = Workbook()
-        ws = None
+        ws = wb.active
+        ws.title = sheet_name
+        # The workbook is new, so headers will go to the first row
+        header_row = 1
+    else:
+        wb = load_workbook(filename=file_path)
+        if sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            # Check if the sheet is empty and headers should go to the
+            # first row
+            if ws.max_row == 1 and all(cell.value is None for cell in ws[1]):
+                header_row = 1
+            else:
+                header_row = ws.max_row + 1
+        else:
+            ws = wb.create_sheet(sheet_name)
+            # The sheet is new, so headers will go to the first row
+            header_row = 1
 
-    # Create a new sheet if it doesn't exist or if the workbook is new
-    if ws is None:
-        ws = wb.create_sheet(sheet_name)
-        # Add headers for a newly created sheet or workbook
+    # If the header row is 1, it means we need to add headers
+    if header_row == 1:
         headers = ["Original Image", "Preprocessed Image", "Converted Text"]
         ws.append(headers)
-    elif ws.max_row == 1 and all(cell.value is None for cell in ws[1]):
-        # Add headers if the existing sheet is essentially empty
-        headers = ["Original Image", "Preprocessed Image", "Converted Text"]
-        ws.append(headers)
 
-    org_img, prep_img, text = ocred_tuples
-    # Append the text in the next available row
-    ws.append(["", "", text])
+    # Now append the OCR results starting from the row after headers
+    for ocr_result in ocred_tuples:
+        org_img, prep_img, text = ocr_result
+        # Append the text in the next available row
+        ws.append(["", "", text])
 
-    current_row = ws.max_row  # The row of the newly added text
+        current_row = ws.max_row
 
-    # Embed the original and preprocessed images in their respective cells
-    add_image_to_excel_from_memory(
-        image=org_img, sheet=ws, row=current_row, col="A"
-    )
-    add_image_to_excel_from_memory(
-        image=prep_img, sheet=ws, row=current_row, col="B"
-    )
+        # Embed the original and preprocessed images in their respective cells
+        add_image_to_excel_from_memory(
+            image=org_img, sheet=ws, row=current_row, col="A"
+        )
+        add_image_to_excel_from_memory(
+            image=prep_img, sheet=ws, row=current_row, col="B"
+        )
+
+    # Use the function to adjust the widths
+    adjust_column_widths(ws)
+
+    # Set the height of a specific row
+    row_height = 20  # Example height in points; adjust to your needs
+    ws.row_dimensions[1].height = row_height
+
+    # If you want to set the height of all rows to the same value:
+    for row in ws.iter_rows():
+        ws.row_dimensions[row[0].row].height = row_height
 
     # Save the workbook
     wb.save(filename=file_path)
@@ -400,10 +466,14 @@ if __name__ == "__main__":
     lines = detect_text_elements(img=original_img, thresh=thresh)
 
     selected_phrases = []
+
+    # Initialize an empty list to collect OCR results
+    all_ocr_results = []
+
     for line in lines:
         # line.draw(img=original_img, color=BLUE, display=True)
         for i, phrase in enumerate(line.phrases):
-            if i != 1:  # Skip this phrase
+            if i != 1:  # Skip this phrase (a column in the image)
                 # phrase.draw(img=original_img, color=RED, display=True)
                 selected_phrases.append(phrase)
                 for word in phrase.words:
@@ -412,12 +482,15 @@ if __name__ == "__main__":
                         original_img=original_img
                     ).values()
 
-                    add_results_to_excel(
-                        file_path="runes.xlsx",
-                        sheet_name="20240302",
-                        ocred_tuples=(
-                            orig_word_img,
-                            prepr_word_img,
-                            word_txt,
-                        ),
+                    # Collect each set of results in a list
+                    all_ocr_results.append(
+                        (orig_word_img, prepr_word_img, word_txt)
                     )
+
+    # Now call add_results_to_excel once with all collected OCR results
+    add_results_to_excel(
+        file_path="runes.xlsx",
+        sheet_name="20240302",
+        ocred_tuples=all_ocr_results,  # Pass the list of all OCR results
+        delete_file_if_exists=True,
+    )
