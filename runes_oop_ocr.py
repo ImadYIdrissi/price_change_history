@@ -96,6 +96,43 @@ class TextElement:
             "text": text,
         }
 
+    def draw(
+        self,
+        img: np.ndarray,
+        display: bool = False,
+        color: Tuple[int, int, int] = RED,
+    ) -> np.ndarray:
+        """
+        Draw a bounding box around the text element on the image, optionally
+        display it, and allow color customization.
+
+        Args:
+            img: The original image on which to draw.
+            display: Flag indicating whether to display the image with the
+            bounding box.
+            color: The color of the bounding box (B, G, R).
+
+        Returns:
+            The image with the bounding box drawn around the text element.
+        """
+        # Draw a rectangle around the text element with the specified color
+        cv2.rectangle(
+            img,
+            (self.x, self.y),
+            (self.x + self.w, self.y + self.h),
+            color=color,
+            thickness=2,
+        )
+
+        if display:
+            cv2.imshow("Text Element", img)
+            cv2.waitKey(
+                0
+            )  # Wait for a key press to close the displayed window
+            cv2.destroyAllWindows()
+
+        return img
+
 
 class Line(TextElement):
     def __init__(
@@ -363,16 +400,17 @@ if __name__ == "__main__":
 
     selected_phrases = []
     for line in lines:
+        # line.draw(img=original_img, color=BLUE, display=True)
         for i, phrase in enumerate(line.phrases):
             if i != 1:  # Skip this phrase
+                # phrase.draw(img=original_img, color=RED, display=True)
                 selected_phrases.append(phrase)
                 for word in phrase.words:
+                    # word.draw(img=original_img, color=GREEN, display=True)
                     orig_word_img, prepr_word_img, word_txt = word.ocr_text(
                         original_img=original_img
                     ).values()
 
-                    # print(word_txt)
-                    # display_img(mat=prepr_word_img)
                     add_results_to_excel(
                         file_path="sample.xlsx",
                         sheet_name="test1",
