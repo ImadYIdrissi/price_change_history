@@ -1,5 +1,6 @@
-openpyxl
-pytesseract
 numpy
 pandas
-# open-cv
+openpyxl
+pytesseract
+opencv-python
+opencv-contrib-python
