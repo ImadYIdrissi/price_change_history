@@ -101,6 +101,7 @@ class TextElement:
         img: np.ndarray,
         display: bool = False,
         color: Tuple[int, int, int] = RED,
+        window_name: str = "Text Element",
     ) -> np.ndarray:
         """
         Draw a bounding box around the text element on the image, optionally
@@ -117,17 +118,17 @@ class TextElement:
         """
         # Draw a rectangle around the text element with the specified color
         cv2.rectangle(
-            img,
-            (self.x, self.y),
-            (self.x + self.w, self.y + self.h),
+            img=img,
+            pt1=(self.x, self.y),
+            pt2=(self.x + self.w, self.y + self.h),
             color=color,
             thickness=2,
         )
 
         if display:
-            cv2.imshow("Text Element", img)
+            cv2.imshow(winname=window_name, mat=img)
             cv2.waitKey(
-                0
+                delay=0
             )  # Wait for a key press to close the displayed window
             cv2.destroyAllWindows()
 
@@ -412,7 +413,11 @@ if __name__ == "__main__":
                     ).values()
 
                     add_results_to_excel(
-                        file_path="sample.xlsx",
-                        sheet_name="test1",
-                        ocred_tuples=(orig_word_img, prepr_word_img, word_txt),
+                        file_path="runes.xlsx",
+                        sheet_name="20240302",
+                        ocred_tuples=(
+                            orig_word_img,
+                            prepr_word_img,
+                            word_txt,
+                        ),
                     )
