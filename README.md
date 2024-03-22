@@ -1,6 +1,6 @@
 # What is this repo
 
-An attempt to perform OCR on images to collect data from images that look like tabluar-images.
+An attempt to perform OCR on images to collect data from images that look like tabluar-data.
 
 The images I used are from a game, and I thought it could be fun to trace the prices from this game on csv files without using things like cheat engines etc...
 
