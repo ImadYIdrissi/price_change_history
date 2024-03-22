@@ -17,6 +17,7 @@ from openpyxl.drawing.image import Image as OpenpyxlImage
 BLUE: Tuple[int, int, int] = (255, 0, 0)
 GREEN: Tuple[int, int, int] = (0, 255, 0)
 RED: Tuple[int, int, int] = (0, 0, 255)
+ENLARGE_FACTOR: int = 3
 
 
 class TextElement:
@@ -46,10 +47,19 @@ class TextElement:
         Returns:
             The preprocessed image.
         """
+        # Enlarge the image
+        enlarge_factor = ENLARGE_FACTOR
+        width = int(img.shape[1] * enlarge_factor)
+        height = int(img.shape[0] * enlarge_factor)
+        dim = (width, height)
+        img = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+
         # Convert to grayscale
         gray = cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY)
+
         # Apply Gaussian blur to remove noise
         blurred = cv2.GaussianBlur(src=gray, ksize=(5, 5), sigmaX=0)
+
         # Use adaptive thresholding
         adaptive_thresh = cv2.adaptiveThreshold(
             src=blurred,
@@ -59,6 +69,7 @@ class TextElement:
             blockSize=11,
             C=2,
         )
+
         # Apply a morphological operation
         # - dilation followed by erosion, known as closing
         # - This can help close small holes or gaps within text characters
@@ -66,23 +77,31 @@ class TextElement:
         morph = cv2.morphologyEx(
             src=adaptive_thresh, op=cv2.MORPH_CLOSE, kernel=kernel
         )
-        # display_img(mat=morph)
+        display_img(mat=morph)
 
-        # # Create a solid black image (background)
-        # black_background = np.zeros_like(morph)
-        # display_img(mat=black_background)
+        # # Find contours on the morphologically processed image
+        # contours, _ = cv2.findContours(
+        #     morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        # )
 
-        # # Here we invert the adaptive threshold image so the text is black
-        # # and the background is white
-        # inverted_thresh = cv2.bitwise_not(adaptive_thresh)
-        # display_img(mat=inverted_thresh)
+        # # Create a mask for filling everything in black except the contours
+        # mask = np.zeros_like(morph)
+        # cv2.drawContours(mask, contours, -1, color=255, thickness=cv2.FILLED)
+        # display_img(mat=mask)
 
-        # # Where the inverted_thresh is black (text regions), we make the
-        # # black_background white
-        # result = cv2.bitwise_or(black_background, morph)
-        # display_img(mat=result)
+        # # Use the mask to determine which areas of the original image to
+        # # blacken
+        # # This step inverts the mask so that the contours (previously white)
+        # # are now black and everything outside them is white
+        # inverted_mask = cv2.bitwise_not(mask)
+        # display_img(mat=inverted_mask)
 
-        # # Return the result which is the text on a solid black background
+        # # Apply the inverted mask to get the text on a solid black background
+        # result = cv2.bitwise_or(morph, inverted_mask)
+
+        # Optionally, invert the result if you want the text to be white and background to be black
+        # result = cv2.bitwise_not(result)
+
         return morph
 
     def ocr_text(self, original_img: np.ndarray) -> Dict[str, Any]:
@@ -369,7 +388,7 @@ def adjust_column_widths(worksheet, min_width=10):
                     max_length = len(cell.value)
             except TypeError:
                 pass
-        adjusted_width = (max_length + 2) * 1.2
+        adjusted_width = (max_length + 2) * ENLARGE_FACTOR
         worksheet.column_dimensions[get_column_letter(column)].width = max(
             min_width, adjusted_width
         )
@@ -434,7 +453,9 @@ def add_results_to_excel(
     adjust_column_widths(ws)
 
     # Set the height of a specific row
-    row_height = 20  # Example height in points; adjust to your needs
+    row_height = (
+        20 * ENLARGE_FACTOR
+    )  # Example height in points; adjust to your needs
     ws.row_dimensions[1].height = row_height
 
     # If you want to set the height of all rows to the same value:
