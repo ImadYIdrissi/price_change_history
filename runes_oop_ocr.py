@@ -36,72 +36,43 @@ class TextElement:
         self.x += offset[0]
         self.y += offset[1]
 
-    def _preprocess_image(
-        self, img: np.ndarray, display_steps: bool = False
-    ) -> np.ndarray:
+    def _preprocess_image(self, img: np.ndarray) -> np.ndarray:
         """
         Preprocess the image for OCR by converting it to grayscale, applying
-        global thresholding, morphological operations, and edge enhancement.
-
+        Gaussian blur, adaptive thresholding, and a morphological close
+        operation.
         Args:
             img: The image to preprocess.
-            display_steps: Whether to display each preprocessing step.
-
         Returns:
             The preprocessed image.
         """
         # Convert to grayscale
         gray = cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY)
-
-        # Enhance edges by using a kernel for sharpening
-        sharpen_kernel = np.array(
-            [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], np.float32
+        # Apply Gaussian blur to remove noise
+        blurred = cv2.GaussianBlur(src=gray, ksize=(5, 5), sigmaX=0)
+        # Use adaptive thresholding
+        adaptive_thresh = cv2.adaptiveThreshold(
+            src=blurred,
+            maxValue=255,
+            adaptiveMethod=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            thresholdType=cv2.THRESH_BINARY,
+            blockSize=11,
+            C=2,
         )
-        sharpened = cv2.filter2D(src=gray, ddepth=-1, kernel=sharpen_kernel)
-
-        if display_steps:
-            cv2.imshow("Sharpened", sharpened)
-            cv2.waitKey(0)
-
-        # Apply global thresholding to binarize the image
-        _, binarized = cv2.threshold(
-            src=sharpened,
-            thresh=0,
-            maxval=255,
-            type=cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+        # Apply a morphological operation
+        # - dilation followed by erosion, known as closing
+        # - This can help close small holes or gaps within text characters
+        kernel = cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(2, 2))
+        morph = cv2.morphologyEx(
+            src=adaptive_thresh, op=cv2.MORPH_CLOSE, kernel=kernel
         )
-
-        if display_steps:
-            cv2.imshow("Binarized", binarized)
-            cv2.waitKey(0)
-
-        # Create a structural element for morphological operations
-        morph_kernel = cv2.getStructuringElement(
-            shape=cv2.MORPH_RECT, ksize=(2, 2)
-        )
-
-        # Apply morphological opening (erosion followed by dilation) to remove noise
-        opened = cv2.morphologyEx(
-            src=binarized, op=cv2.MORPH_OPEN, kernel=morph_kernel
-        )
-
-        if display_steps:
-            cv2.imshow("Opened", opened)
-            cv2.waitKey(0)
-
-        # Invert image if text is white on black background
-        if np.mean(opened) > 127:  # more white than black
-            opened = cv2.bitwise_not(opened)
-
-        return opened
+        return morph
 
     def ocr_text(self, original_img: np.ndarray) -> Dict[str, Any]:
         """
         Perform OCR on a cropped and preprocessed part of the original image.
-
         Args:
             original_img: The original image to perform OCR on.
-
         Returns:
             A dictionary with keys 'original_cropped_img',
             'preprocessed_cropped_img' and 'text', containing the
@@ -123,43 +94,43 @@ class TextElement:
             "text": text,
         }
 
-        def draw(
-            self,
-            img: np.ndarray,
-            display: bool = False,
-            color: Tuple[int, int, int] = RED,
-            window_name: str = "Text Element",
-        ) -> np.ndarray:
-            """
-            Draw a bounding box around the text element on the image, optionally
-            display it, and allow color customization.
+    def draw(
+        self,
+        img: np.ndarray,
+        display: bool = False,
+        color: Tuple[int, int, int] = RED,
+        window_name: str = "Text Element",
+    ) -> np.ndarray:
+        """
+        Draw a bounding box around the text element on the image,
+        optionally display it, and allow color customization.
 
-            Args:
-                img: The original image on which to draw.
-                display: Flag indicating whether to display the image with the
-                bounding box.
-                color: The color of the bounding box (B, G, R).
+        Args:
+            img: The original image on which to draw.
+            display: Flag indicating whether to display the image with the
+            bounding box.
+            color: The color of the bounding box (B, G, R).
 
-            Returns:
-                The image with the bounding box drawn around the text element.
-            """
-            # Draw a rectangle around the text element with the specified color
-            cv2.rectangle(
-                img=img,
-                pt1=(self.x, self.y),
-                pt2=(self.x + self.w, self.y + self.h),
-                color=color,
-                thickness=2,
-            )
+        Returns:
+            The image with the bounding box drawn around the text element.
+        """
+        # Draw a rectangle around the text element with the specified color
+        cv2.rectangle(
+            img=img,
+            pt1=(self.x, self.y),
+            pt2=(self.x + self.w, self.y + self.h),
+            color=color,
+            thickness=2,
+        )
 
-            if display:
-                cv2.imshow(winname=window_name, mat=img)
-                cv2.waitKey(
-                    delay=0
-                )  # Wait for a key press to close the displayed window
-                cv2.destroyAllWindows()
+        if display:
+            cv2.imshow(winname=window_name, mat=img)
+            cv2.waitKey(
+                delay=0
+            )  # Wait for a key press to close the displayed window
+            cv2.destroyAllWindows()
 
-            return img
+        return img
 
 
 class Line(TextElement):
