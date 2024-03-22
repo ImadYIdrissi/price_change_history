@@ -66,6 +66,23 @@ class TextElement:
         morph = cv2.morphologyEx(
             src=adaptive_thresh, op=cv2.MORPH_CLOSE, kernel=kernel
         )
+        # display_img(mat=morph)
+
+        # # Create a solid black image (background)
+        # black_background = np.zeros_like(morph)
+        # display_img(mat=black_background)
+
+        # # Here we invert the adaptive threshold image so the text is black
+        # # and the background is white
+        # inverted_thresh = cv2.bitwise_not(adaptive_thresh)
+        # display_img(mat=inverted_thresh)
+
+        # # Where the inverted_thresh is black (text regions), we make the
+        # # black_background white
+        # result = cv2.bitwise_or(black_background, morph)
+        # display_img(mat=result)
+
+        # # Return the result which is the text on a solid black background
         return morph
 
     def ocr_text(self, original_img: np.ndarray) -> Dict[str, Any]:
@@ -429,34 +446,38 @@ def add_results_to_excel(
 
 
 if __name__ == "__main__":
-    image_path = (
-        "/home/iyid/workspaces/price_change_history/"
-        "images/runes/20240309_runes_1.png"
-    )
-    original_img, thresh = preprocess_image_for_contours(img_path=image_path)
-    lines = detect_text_elements(img=original_img, thresh=thresh)
-
-    selected_phrases = []
 
     # Initialize an empty list to collect OCR results
     all_ocr_results = []
+    for i in range(1, 2):
+        image_path = (
+            "/home/iyid/workspaces/price_change_history/"
+            f"images/runes/20240309_runes_{i}.png"
+        )
+        # TODO : Preprocessing enhancement proposition
+        # 1. Make the contour boxes thicker/squarer.
+        original_img, thresh = preprocess_image_for_contours(
+            img_path=image_path
+        )
+        lines = detect_text_elements(img=original_img, thresh=thresh)
 
-    for line in lines:
-        # line.draw(img=original_img, color=BLUE, display=True)
-        for i, phrase in enumerate(line.phrases):
-            if i != 1:  # Skip this phrase (a column in the image)
-                # phrase.draw(img=original_img, color=RED, display=True)
-                selected_phrases.append(phrase)
-                for word in phrase.words:
-                    # word.draw(img=original_img, color=GREEN, display=True)
-                    orig_word_img, prepr_word_img, word_txt = word.ocr_text(
-                        original_img=original_img
-                    ).values()
+        selected_phrases = []
 
-                    # Collect each set of results in a list
-                    all_ocr_results.append(
-                        (orig_word_img, prepr_word_img, word_txt)
-                    )
+        for line in lines:
+            # line.draw(img=original_img, color=BLUE, display=True)
+            for i, phrase in enumerate(line.phrases):
+                if i != 1:  # Skip this phrase (a column in the image)
+                    # phrase.draw(img=original_img, color=RED, display=True)
+                    selected_phrases.append(phrase)
+                    for word in phrase.words:
+                        orig_word_img, prepr_word_img, word_txt = (
+                            word.ocr_text(original_img=original_img).values()
+                        )
+
+                        # Collect each set of results in a list
+                        all_ocr_results.append(
+                            (orig_word_img, prepr_word_img, word_txt)
+                        )
 
     # Now call add_results_to_excel once with all collected OCR results
     add_results_to_excel(
