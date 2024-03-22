@@ -1,6 +1,8 @@
+torch
 numpy
 pandas
 openpyxl
 pytesseract
+transformers
 opencv-python
 opencv-contrib-python
