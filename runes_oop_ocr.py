@@ -23,6 +23,7 @@ RED: Tuple[int, int, int] = (0, 0, 255)
 ENLARGE_FACTOR: float = 1.5
 
 
+# TODO : Customize training the 'Kamas' sign into 'K' or 'K€'
 class TextElement:
     def __init__(
         self, contour: np.ndarray, offset: Tuple[int, int] = (0, 0)
@@ -104,6 +105,9 @@ class TextElement:
 
         # display_img(inverted_morph)
 
+        # TODO : Remove the double "lines" representing the contour
+        # + the actual letter
+
         # Add padding
         padded_image = cv2.copyMakeBorder(
             morph,
@@ -121,6 +125,8 @@ class TextElement:
 
         # display_img(padded_image)
         return inverted
+
+    # TODO : Add OCR function that uses PaddleOCR
 
     def ocr_text_with_pytesseract(
         self, original_img: np.ndarray
