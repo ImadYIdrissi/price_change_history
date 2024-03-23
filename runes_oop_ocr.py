@@ -41,7 +41,7 @@ class TextElement:
         self.x += offset[0]
         self.y += offset[1]
 
-    def _preprocess_image_1(
+    def _preprocess_image(
         self,
         img: np.ndarray,
     ) -> np.ndarray:
@@ -145,7 +145,7 @@ class TextElement:
             self.y : self.y + self.h, self.x : self.x + self.w
         ]
         # Preprocess the cropped image
-        preprocessed_img = self._preprocess_image_1(img=cropped_img)
+        preprocessed_img = self._preprocess_image(img=cropped_img)
         # Apply pytesseract OCR on the preprocessed image
         text = pytesseract.image_to_string(
             image=preprocessed_img, config="--psm 7 --oem 3"
