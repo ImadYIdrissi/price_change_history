@@ -14,10 +14,13 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
 # Define color constants for drawing on images
+BLACK: Tuple[int, int, int] = (0, 0, 0)
+WHITE: Tuple[int, int, int] = (255, 255, 255)
 BLUE: Tuple[int, int, int] = (255, 0, 0)
 GREEN: Tuple[int, int, int] = (0, 255, 0)
 RED: Tuple[int, int, int] = (0, 0, 255)
-ENLARGE_FACTOR: int = 3
+
+ENLARGE_FACTOR: float = 1.5
 
 
 class TextElement:
@@ -37,27 +40,35 @@ class TextElement:
         self.x += offset[0]
         self.y += offset[1]
 
-    def _preprocess_image(self, img: np.ndarray) -> np.ndarray:
+    def _preprocess_image_1(
+        self,
+        img: np.ndarray,
+    ) -> np.ndarray:
         """
         Preprocess the image for OCR by converting it to grayscale, applying
-        Gaussian blur, adaptive thresholding, and a morphological close
-        operation.
+        Gaussian blur, adaptive thresholding, a morphological close operation,
+        inverting the colors, and adding padding around the image to ensure
+        text does not touch the borders.
+
         Args:
             img: The image to preprocess.
+
         Returns:
-            The preprocessed image.
+            The preprocessed and padded image.
         """
         # Enlarge the image
         enlarge_factor = ENLARGE_FACTOR
+        padding = 10
         width = int(img.shape[1] * enlarge_factor)
         height = int(img.shape[0] * enlarge_factor)
         dim = (width, height)
+
         img = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
 
         # Convert to grayscale
         gray = cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY)
 
-        # Apply Gaussian blur to remove noise
+        # Apply Gaussian blur
         blurred = cv2.GaussianBlur(src=gray, ksize=(5, 5), sigmaX=0)
 
         # Use adaptive thresholding
@@ -70,41 +81,50 @@ class TextElement:
             C=2,
         )
 
-        # Apply a morphological operation
-        # - dilation followed by erosion, known as closing
-        # - This can help close small holes or gaps within text characters
+        # Morphological operation
         kernel = cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(2, 2))
         morph = cv2.morphologyEx(
             src=adaptive_thresh, op=cv2.MORPH_CLOSE, kernel=kernel
         )
-        display_img(mat=morph)
 
-        # # Find contours on the morphologically processed image
-        # contours, _ = cv2.findContours(
-        #     morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        # )
+        # # Detect edges using Canny to find the contours of the black areas
+        # edges = cv2.Canny(morph, 100, 200)
 
-        # # Create a mask for filling everything in black except the contours
-        # mask = np.zeros_like(morph)
-        # cv2.drawContours(mask, contours, -1, color=255, thickness=cv2.FILLED)
-        # display_img(mat=mask)
+        # # Dilate the edges to extend them
+        # kernel = np.ones((3, 3), np.uint8)
+        # dilated_edges = cv2.dilate(edges, kernel, iterations=1)
 
-        # # Use the mask to determine which areas of the original image to
-        # # blacken
-        # # This step inverts the mask so that the contours (previously white)
-        # # are now black and everything outside them is white
-        # inverted_mask = cv2.bitwise_not(mask)
-        # display_img(mat=inverted_mask)
+        # # Superimpose the dilated edges onto the original image to extend
+        # # the black regions
+        # # Wherever the edges are white (255), we want to convert those pixels
+        # # to black (0) in the original image
+        # img[dilated_edges == 255] = 0
+        # display_img(dilated_edges)
+        # display_img(img)
 
-        # # Apply the inverted mask to get the text on a solid black background
-        # result = cv2.bitwise_or(morph, inverted_mask)
+        # display_img(inverted_morph)
 
-        # Optionally, invert the result if you want the text to be white and background to be black
-        # result = cv2.bitwise_not(result)
+        # Add padding
+        padded_image = cv2.copyMakeBorder(
+            morph,
+            top=int(padding / 2),
+            bottom=int(padding / 2),
+            left=padding,
+            right=padding,
+            borderType=cv2.BORDER_CONSTANT,
+            value=WHITE,
+        )
 
-        return morph
+        # Invert colors
+        inverted = cv2.bitwise_not(padded_image)
+        # display_img(inverted)
 
-    def ocr_text(self, original_img: np.ndarray) -> Dict[str, Any]:
+        # display_img(padded_image)
+        return inverted
+
+    def ocr_text_with_pytesseract(
+        self, original_img: np.ndarray
+    ) -> Dict[str, Any]:
         """
         Perform OCR on a cropped and preprocessed part of the original image.
         Args:
@@ -119,7 +139,7 @@ class TextElement:
             self.y : self.y + self.h, self.x : self.x + self.w
         ]
         # Preprocess the cropped image
-        preprocessed_img = self._preprocess_image(img=cropped_img)
+        preprocessed_img = self._preprocess_image_1(img=cropped_img)
         # Apply pytesseract OCR on the preprocessed image
         text = pytesseract.image_to_string(
             image=preprocessed_img, config="--psm 7 --oem 3"
@@ -388,7 +408,7 @@ def adjust_column_widths(worksheet, min_width=10):
                     max_length = len(cell.value)
             except TypeError:
                 pass
-        adjusted_width = (max_length + 2) * ENLARGE_FACTOR
+        adjusted_width = (max_length + 2) * ENLARGE_FACTOR / 2
         worksheet.column_dimensions[get_column_letter(column)].width = max(
             min_width, adjusted_width
         )
@@ -492,7 +512,9 @@ if __name__ == "__main__":
                     selected_phrases.append(phrase)
                     for word in phrase.words:
                         orig_word_img, prepr_word_img, word_txt = (
-                            word.ocr_text(original_img=original_img).values()
+                            word.ocr_text_with_pytesseract(
+                                original_img=original_img
+                            ).values()
                         )
 
                         # Collect each set of results in a list
