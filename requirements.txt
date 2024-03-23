@@ -5,4 +5,5 @@ openpyxl
 pytesseract
 transformers
 opencv-python
+paddleocr>=2.0.1
 opencv-contrib-python
