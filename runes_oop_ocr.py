@@ -81,6 +81,7 @@ class TextElement:
             blockSize=11,
             C=2,
         )
+        display_img(adaptive_thresh)
 
         # Morphological operation
         kernel = cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(2, 2))
@@ -88,25 +89,14 @@ class TextElement:
             src=adaptive_thresh, op=cv2.MORPH_CLOSE, kernel=kernel
         )
 
-        # # Detect edges using Canny to find the contours of the black areas
-        # edges = cv2.Canny(morph, 100, 200)
+        # Detect edges using Canny to find the contours of the black areas
+        edges = cv2.Canny(morph, 100, 200)
+        # display_img(mat=edges)
 
-        # # Dilate the edges to extend them
-        # kernel = np.ones((3, 3), np.uint8)
-        # dilated_edges = cv2.dilate(edges, kernel, iterations=1)
-
-        # # Superimpose the dilated edges onto the original image to extend
-        # # the black regions
-        # # Wherever the edges are white (255), we want to convert those pixels
-        # # to black (0) in the original image
-        # img[dilated_edges == 255] = 0
-        # display_img(dilated_edges)
-        # display_img(img)
-
-        # display_img(inverted_morph)
-
-        # TODO : Remove the double "lines" representing the contour
-        # + the actual letter
+        # Erode the outer white layer
+        erode_kernel = np.ones((2, 2), np.uint8)
+        erosion = cv2.erode(edges, erode_kernel, iterations=1)
+        # display_img(mat=erosion)
 
         # Add padding
         padded_image = cv2.copyMakeBorder(
@@ -303,6 +293,7 @@ def find_contours(
     contours, _ = cv2.findContours(
         image=dilate, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE
     )
+
     return contours
 
 
@@ -368,11 +359,13 @@ def detect_text_elements(img: np.ndarray, thresh: np.ndarray) -> List[Line]:
             )
 
             for word_contour in sorted_word_contours:
+
                 word = Word(
                     contour=word_contour,
                     phrase_ref=phrase,
                     offset=(phrase.x, phrase.y),
                 )
+
                 phrase.words.append(word)
 
     return lines
